@@ -106,7 +106,6 @@ public:
         FilterValueList,
         FitContent,
         Flex,
-        FontVariant,
         Frequency,
         GridAutoFlow,
         GridTemplateArea,
