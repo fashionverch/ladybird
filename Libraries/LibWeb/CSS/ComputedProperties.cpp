@@ -1558,6 +1558,51 @@ Isolation ComputedProperties::isolation() const
     return keyword_to_isolation(value.to_keyword()).release_value();
 }
 
+TouchActionData ComputedProperties::touch_action() const
+{
+    auto const& touch_action = property(CSS::PropertyID::TouchAction);
+    if (touch_action.is_value_list()) {
+        CSS::TouchActionData touch_action_data = CSS::TouchActionData::none();
+        for (auto const& value : touch_action.as_value_list().values()) {
+            switch (value->as_keyword().keyword()) {
+            case CSS::Keyword::Auto:
+                touch_action_data = {};
+                break;
+            case CSS::Keyword::None:
+                break;
+            case CSS::Keyword::Manipulation:
+                touch_action_data = {};
+                touch_action_data.allow_other = false;
+                break;
+            case CSS::Keyword::PanX:
+                touch_action_data.allow_right = true;
+                touch_action_data.allow_left = true;
+                break;
+            case CSS::Keyword::PanLeft:
+                touch_action_data.allow_left = true;
+                break;
+            case CSS::Keyword::PanRight:
+                touch_action_data.allow_right = true;
+                break;
+            case CSS::Keyword::PanY:
+                touch_action_data.allow_up = true;
+                touch_action_data.allow_down = true;
+                break;
+            case CSS::Keyword::PanUp:
+                touch_action_data.allow_up = true;
+                break;
+            case CSS::Keyword::PanDown:
+                touch_action_data.allow_down = true;
+                break;
+            default:
+                VERIFY_NOT_REACHED();
+            }
+        }
+        return touch_action_data;
+    }
+    return TouchActionData {};
+}
+
 Containment ComputedProperties::contain() const
 {
     Containment containment = {};
