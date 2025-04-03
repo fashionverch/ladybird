@@ -861,11 +861,17 @@ WebIDL::ExceptionOr<void> KeyframeEffect::set_keyframes(Optional<GC::Root<JS::Ob
         auto key = static_cast<u64>(keyframe.computed_offset.value() * 100 * AnimationKeyFrameKeyScaleFactor);
 
         for (auto [property_id, property_value] : keyframe.parsed_properties()) {
-            if (property_value->is_unresolved() && target)
+            if (property_value->is_unresolved() && target) {
                 property_value = CSS::Parser::Parser::resolve_unresolved_style_value(CSS::Parser::ParsingParams { target->document() }, *target, pseudo_element_type(), property_id, property_value->as_unresolved());
-            CSS::StyleComputer::for_each_property_expanding_shorthands(property_id, property_value, CSS::StyleComputer::AllowUnresolved::Yes, [&](CSS::PropertyID shorthand_id, CSS::CSSStyleValue const& shorthand_value) {
-                m_target_properties.set(shorthand_id);
-                resolved_keyframe.properties.set(shorthand_id, NonnullRefPtr<CSS::CSSStyleValue const> { shorthand_value });
+                dbgln("Resolving unresolved {} in set_keyframes(); got `{}`", CSS::string_from_property_id(property_id), property_value->to_string(CSS::CSSStyleValue::SerializationMode::Normal));
+            }
+            CSS::StyleComputer::for_each_property_expanding_shorthands(property_id, property_value, CSS::StyleComputer::AllowUnresolved::Yes, [&](CSS::PropertyID longhand_id, CSS::CSSStyleValue const& longhand_value) {
+                dbgln("expanding shorthands in set_keyframes");
+                VERIFY(!longhand_value.is_guaranteed_invalid());
+                VERIFY(!longhand_value.is_pending_substitution());
+                VERIFY(!longhand_value.is_unresolved());
+                m_target_properties.set(longhand_id);
+                resolved_keyframe.properties.set(longhand_id, NonnullRefPtr<CSS::CSSStyleValue const> { longhand_value });
             });
         }
 

@@ -1200,6 +1200,7 @@ Optional<FlyString> ComputedProperties::font_language_override() const
 Optional<Gfx::FontVariantAlternates> ComputedProperties::font_variant_alternates() const
 {
     auto const& value = property(PropertyID::FontVariantAlternates);
+    dbgln("font-variant-alternates is: {}", value.to_string(CSSStyleValue::SerializationMode::Normal));
     switch (keyword_to_font_variant_alternates(value.to_keyword()).value()) {
     case FontVariantAlternates::Normal:
         return {};

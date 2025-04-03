@@ -60,6 +60,7 @@
 #include <LibWeb/CSS/StyleValues/LengthStyleValue.h>
 #include <LibWeb/CSS/StyleValues/MathDepthStyleValue.h>
 #include <LibWeb/CSS/StyleValues/NumberStyleValue.h>
+#include <LibWeb/CSS/StyleValues/PendingSubstitutionStyleValue.h>
 #include <LibWeb/CSS/StyleValues/PercentageStyleValue.h>
 #include <LibWeb/CSS/StyleValues/PositionStyleValue.h>
 #include <LibWeb/CSS/StyleValues/RatioStyleValue.h>
@@ -707,6 +708,24 @@ void StyleComputer::for_each_property_expanding_shorthands(PropertyID property_i
         return;
     }
 
+    if (property_is_shorthand(property_id) && (value.is_unresolved() || value.is_pending_substitution())) {
+        // If a shorthand property contains an arbitrary substitution function in its value, the longhand properties
+        // it’s associated with must instead be filled in with a special, unobservable-to-authors pending-substitution
+        // value that indicates the shorthand contains an arbitrary substitution function, and thus the longhand’s
+        // value can’t be determined until after substituted.
+        // https://drafts.csswg.org/css-values-5/#pending-substitution-value
+        dbgln("Assigning pensubval for longhands of {}", string_from_property_id(property_id));
+        auto pending_substitution_value = PendingSubstitutionStyleValue::create();
+        for (auto longhand_id : longhands_for_shorthand(property_id)) {
+            for_each_property_expanding_shorthands(longhand_id, pending_substitution_value, allow_unresolved, set_longhand_property);
+        }
+        return;
+    }
+
+    if (value.is_guaranteed_invalid()) {
+        dbgln("{} is guaranteed-invalid! We should probably do something.", string_from_property_id(property_id));
+    }
+
     auto assign_edge_values = [&](PropertyID top_property, PropertyID right_property, PropertyID bottom_property, PropertyID left_property, auto const& values) {
         if (values.size() == 4) {
             set_longhand_property(top_property, values[0]);
@@ -948,12 +967,12 @@ void StyleComputer::for_each_property_expanding_shorthands(PropertyID property_i
     }
 
     if (property_is_shorthand(property_id)) {
-        // ShorthandStyleValue was handled already.
-        // That means if we got here, that `value` must be a CSS-wide keyword, which we should apply to our longhand properties.
+        // ShorthandStyleValue was handled already, as were unresolved shorthands.
+        // That means the only values we should see are the CSS-wide keywords, or the guaranteed-invalid value.
+        // Both should be applied to our longhand properties.
         // We don't directly call `set_longhand_property()` because the longhands might have longhands of their own.
         // (eg `grid` -> `grid-template` -> `grid-template-areas` & `grid-template-rows` & `grid-template-columns`)
-        // Forget this requirement if we're ignoring unresolved values and the value is unresolved.
-        VERIFY(value.is_css_wide_keyword() || (allow_unresolved == AllowUnresolved::Yes && value.is_unresolved()));
+        VERIFY(value.is_css_wide_keyword() || value.is_guaranteed_invalid());
         for (auto longhand : longhands_for_shorthand(property_id))
             for_each_property_expanding_shorthands(longhand, value, allow_unresolved, set_longhand_property);
         return;
@@ -1007,8 +1026,10 @@ void StyleComputer::set_all_properties(
         }
 
         NonnullRefPtr<CSSStyleValue> property_value = value;
-        if (property_value->is_unresolved())
+        if (property_value->is_unresolved()) {
             property_value = Parser::Parser::resolve_unresolved_style_value(Parser::ParsingParams { document }, element, pseudo_element, property_id, property_value->as_unresolved());
+            dbgln("Resolving unresolved {} in set_all_properties(); got `{}`", string_from_property_id(property_id), property_value->to_string(CSSStyleValue::SerializationMode::Normal));
+        }
         set_property_expanding_shorthands(cascaded_properties, property_id, property_value, declaration, cascade_origin, important, layer_name);
     }
 }
@@ -1024,22 +1045,48 @@ void StyleComputer::cascade_declarations(
 {
     auto cascade_style_declaration = [&](CSSStyleProperties const& declaration) {
         for (auto const& property : declaration.properties()) {
+            dbgln("Cascading {}", string_from_property_id(property.property_id));
+            dbgln("-> value: `{}`, psv? {}, giv? {}", property.value->to_string(CSSStyleValue::SerializationMode::Normal), property.value->is_pending_substitution(), property.value->is_guaranteed_invalid());
             if (important != property.important)
                 continue;
 
             if (pseudo_element.has_value() && !pseudo_element_supports_property(*pseudo_element, property.property_id))
                 continue;
 
-            if (property.property_id == CSS::PropertyID::All) {
-                set_all_properties(cascaded_properties, element, pseudo_element, property.value, m_document, &declaration, cascade_origin, important, layer_name);
+            auto property_value = property.value;
+
+            if (property_value->is_unresolved()) {
+                property_value = Parser::Parser::resolve_unresolved_style_value(Parser::ParsingParams { element.document() }, element, pseudo_element, property.property_id, property_value->as_unresolved());
+                dbgln("Resolving unresolved {} in cascade_declarations(); got `{}`", string_from_property_id(property.property_id), property_value->to_string(CSSStyleValue::SerializationMode::Normal));
+            }
+
+            if (property_value->is_guaranteed_invalid()) {
+                dbgln("Resolving guaranteed-invalid {} in cascade_declarations()", string_from_property_id(property.property_id));
+                // https://drafts.csswg.org/css-values-5/#invalid-at-computed-value-time
+                // When substitution results in a property’s value containing the guaranteed-invalid value, this makes the
+                // declaration invalid at computed-value time. When this happens, the computed value is one of the
+                // following depending on the property’s type:
+
+                // -> The property is a non-registered custom property
+                // -> The property is a registered custom property with universal syntax
+                // FIXME: Process custom properties here?
+                if (false) {
+                    // The computed value is the guaranteed-invalid value.
+                }
+                // -> Otherwise
+                else {
+                    // Either the property’s inherited value or its initial value depending on whether the property is
+                    // inherited or not, respectively, as if the property’s value had been specified as the unset keyword.
+                    property_value = CSSKeywordValue::create(Keyword::Unset);
+                }
+            }
+
+            if (property.property_id == PropertyID::All) {
+                set_all_properties(cascaded_properties, element, pseudo_element, property_value, m_document, &declaration, cascade_origin, important, layer_name);
                 continue;
             }
 
-            auto property_value = property.value;
-            if (property.value->is_unresolved())
-                property_value = Parser::Parser::resolve_unresolved_style_value(Parser::ParsingParams { document() }, element, pseudo_element, property.property_id, property.value->as_unresolved());
-            if (!property_value->is_unresolved())
-                set_property_expanding_shorthands(cascaded_properties, property.property_id, property_value, &declaration, cascade_origin, important, layer_name);
+            set_property_expanding_shorthands(cascaded_properties, property.property_id, property_value, &declaration, cascade_origin, important, layer_name);
         }
     };
 
@@ -1134,6 +1181,24 @@ void StyleComputer::collect_animation_into(DOM::Element& element, Optional<CSS::
         dbgln("Animation {} contains {} properties to interpolate, progress = {}%", animation->id(), valid_properties, progress_in_keyframe * 100);
     }
 
+    // FIXME: I think I need to expand out any unresolved shorthands here somehow.
+    //        See: https://drafts.csswg.org/web-animations-1/#ref-for-computed-keyframes
+    for (auto const& [property_id, value] : keyframe_values.properties) {
+        value.visit(
+            [&](RefPtr<CSSStyleValue const> value) -> RefPtr<CSSStyleValue const> {
+                if (value->is_revert() || value->is_revert_layer())
+                    return computed_properties.property(property_id);
+                if (value->is_unresolved()) {
+                    auto property_value = Parser::Parser::resolve_unresolved_style_value(Parser::ParsingParams { element.document() }, element, pseudo_element, property_id, value->as_unresolved());
+
+                    dbgln("Resolving unresolved {} in collect_animation_into(); got `{}`", string_from_property_id(property_id), property_value->to_string(CSSStyleValue::SerializationMode::Normal));
+                    return property_value;
+                }
+                return value;
+            },
+            [](auto const&) {});
+    }
+
     for (auto const& it : keyframe_values.properties) {
         auto resolve_property = [&](auto& property) {
             return property.visit(
@@ -1145,8 +1210,12 @@ void StyleComputer::collect_animation_into(DOM::Element& element, Optional<CSS::
                 [&](RefPtr<CSSStyleValue const> value) -> RefPtr<CSSStyleValue const> {
                     if (value->is_revert() || value->is_revert_layer())
                         return computed_properties.property(it.key);
-                    if (value->is_unresolved())
-                        return Parser::Parser::resolve_unresolved_style_value(Parser::ParsingParams { element.document() }, element, pseudo_element, it.key, value->as_unresolved());
+                    if (value->is_unresolved()) {
+                        auto property_value = Parser::Parser::resolve_unresolved_style_value(Parser::ParsingParams { element.document() }, element, pseudo_element, it.key, value->as_unresolved());
+
+                        dbgln("Resolving unresolved {} in collect_animation_into(); got `{}`", string_from_property_id(it.key), property_value->to_string(CSSStyleValue::SerializationMode::Normal));
+                        return property_value;
+                    }
                     return value;
                 });
         };
