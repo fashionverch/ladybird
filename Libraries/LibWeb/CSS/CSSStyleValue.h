@@ -106,12 +106,12 @@ public:
         FilterValueList,
         FitContent,
         Flex,
-        FontVariant,
         Frequency,
         GridAutoFlow,
         GridTemplateArea,
         GridTrackPlacement,
         GridTrackSizeList,
+        GuaranteedInvalid,
         Image,
         Integer,
         Keyword,
@@ -120,6 +120,7 @@ public:
         MathDepth,
         Number,
         OpenTypeTagged,
+        PendingSubstitution,
         Percentage,
         Position,
         RadialGradient,
@@ -248,6 +249,10 @@ public:
     GridTrackSizeListStyleValue const& as_grid_track_size_list() const;
     GridTrackSizeListStyleValue& as_grid_track_size_list() { return const_cast<GridTrackSizeListStyleValue&>(const_cast<CSSStyleValue const&>(*this).as_grid_track_size_list()); }
 
+    bool is_guaranteed_invalid() const { return type() == Type::GuaranteedInvalid; }
+    GuaranteedInvalidStyleValue const& as_guaranteed_invalid() const;
+    GuaranteedInvalidStyleValue& as_guaranteed_invalid() { return const_cast<GuaranteedInvalidStyleValue&>(const_cast<CSSStyleValue const&>(*this).as_guaranteed_invalid()); }
+
     bool is_image() const { return type() == Type::Image; }
     ImageStyleValue const& as_image() const;
     ImageStyleValue& as_image() { return const_cast<ImageStyleValue&>(const_cast<CSSStyleValue const&>(*this).as_image()); }
@@ -279,6 +284,10 @@ public:
     bool is_open_type_tagged() const { return type() == Type::OpenTypeTagged; }
     OpenTypeTaggedStyleValue const& as_open_type_tagged() const;
     OpenTypeTaggedStyleValue& as_open_type_tagged() { return const_cast<OpenTypeTaggedStyleValue&>(const_cast<CSSStyleValue const&>(*this).as_open_type_tagged()); }
+
+    bool is_pending_substitution() const { return type() == Type::PendingSubstitution; }
+    PendingSubstitutionStyleValue const& as_pending_substitution() const;
+    PendingSubstitutionStyleValue& as_pending_substitution() { return const_cast<PendingSubstitutionStyleValue&>(const_cast<CSSStyleValue const&>(*this).as_pending_substitution()); }
 
     bool is_percentage() const { return type() == Type::Percentage; }
     PercentageStyleValue const& as_percentage() const;

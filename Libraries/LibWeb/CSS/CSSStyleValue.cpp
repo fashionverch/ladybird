@@ -38,6 +38,7 @@
 #include <LibWeb/CSS/StyleValues/GridTemplateAreaStyleValue.h>
 #include <LibWeb/CSS/StyleValues/GridTrackPlacementStyleValue.h>
 #include <LibWeb/CSS/StyleValues/GridTrackSizeListStyleValue.h>
+#include <LibWeb/CSS/StyleValues/GuaranteedInvalidStyleValue.h>
 #include <LibWeb/CSS/StyleValues/ImageStyleValue.h>
 #include <LibWeb/CSS/StyleValues/IntegerStyleValue.h>
 #include <LibWeb/CSS/StyleValues/LengthStyleValue.h>
@@ -45,6 +46,7 @@
 #include <LibWeb/CSS/StyleValues/MathDepthStyleValue.h>
 #include <LibWeb/CSS/StyleValues/NumberStyleValue.h>
 #include <LibWeb/CSS/StyleValues/OpenTypeTaggedStyleValue.h>
+#include <LibWeb/CSS/StyleValues/PendingSubstitutionStyleValue.h>
 #include <LibWeb/CSS/StyleValues/PercentageStyleValue.h>
 #include <LibWeb/CSS/StyleValues/PositionStyleValue.h>
 #include <LibWeb/CSS/StyleValues/RadialGradientStyleValue.h>
@@ -226,6 +228,12 @@ GridTrackSizeListStyleValue const& CSSStyleValue::as_grid_track_size_list() cons
     return static_cast<GridTrackSizeListStyleValue const&>(*this);
 }
 
+GuaranteedInvalidStyleValue const& CSSStyleValue::as_guaranteed_invalid() const
+{
+    VERIFY(is_guaranteed_invalid());
+    return static_cast<GuaranteedInvalidStyleValue const&>(*this);
+}
+
 CSSKeywordValue const& CSSStyleValue::as_keyword() const
 {
     VERIFY(is_keyword());
@@ -272,6 +280,12 @@ OpenTypeTaggedStyleValue const& CSSStyleValue::as_open_type_tagged() const
 {
     VERIFY(is_open_type_tagged());
     return static_cast<OpenTypeTaggedStyleValue const&>(*this);
+}
+
+PendingSubstitutionStyleValue const& CSSStyleValue::as_pending_substitution() const
+{
+    VERIFY(is_pending_substitution());
+    return static_cast<PendingSubstitutionStyleValue const&>(*this);
 }
 
 PercentageStyleValue const& CSSStyleValue::as_percentage() const

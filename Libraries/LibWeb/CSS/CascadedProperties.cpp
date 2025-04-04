@@ -63,6 +63,7 @@ void CascadedProperties::resolve_unresolved_properties(GC::Ref<DOM::Element> ele
             if (!entry.property.value->is_unresolved())
                 continue;
             entry.property.value = Parser::Parser::resolve_unresolved_style_value(Parser::ParsingParams { element->document() }, element, pseudo_element, property_id, entry.property.value->as_unresolved());
+            dbgln("Resolving unresolved {} in resolve_unresolved_properties(); got `{}`", string_from_property_id(property_id), entry.property.value->to_string(CSSStyleValue::SerializationMode::Normal));
         }
     }
 }
