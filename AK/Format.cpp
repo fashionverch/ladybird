@@ -4,9 +4,13 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+#include <AK/Assertions.h>
+#include <AK/ByteString.h>
 #include <AK/CharacterTypes.h>
+#include <AK/Error.h>
 #include <AK/Format.h>
 #include <AK/GenericLexer.h>
+#include <AK/HashMap.h>
 #include <AK/IntegralMath.h>
 #include <AK/LexicalPath.h>
 #include <AK/String.h>
@@ -1086,6 +1090,54 @@ void vout(FILE* file, StringView fmtstr, TypeErasedFormatParams& params, bool ne
         auto error = ferror(file);
         dbgln("vout() failed ({} written out of {}), error was {} ({})", retval, string.length(), error, strerror(error));
     }
+}
+#if defined(AK_OS_WINDOWS)
+static ErrorOr<void> windows_error_helper(Formatter<StringView>& formatter, FormatBuilder& builder, Error const& error)
+{
+
+    thread_local HashMap<u32, ByteString> windows_errors;
+
+    int code = error.code();
+    Optional<ByteString&> string = windows_errors.get(static_cast<u32>(code));
+    if (string.has_value()) {
+        return formatter.format(builder, string->view());
+    }
+
+    TCHAR* message = nullptr;
+    u32 size = FormatMessage(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        nullptr,
+        bit_cast<DWORD>(code),
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        message,
+        0,
+        nullptr);
+    if (size == 0)
+        return Error::from_windows_error();
+
+    auto& string_in_map = windows_errors.ensure(code, [message, size] { return ByteString { message, size }; });
+    LocalFree(message);
+    return formatter.format(builder, string_in_map);
+}
+#else
+static ErrorOr<void> windows_error_helper([[maybe_unused]] Formatter<StringView>& formatter, [[maybe_unused]] FormatBuilder& builder, [[maybe_unused]] Error const& error)
+{
+    VERIFY_NOT_REACHED();
+}
+#endif
+ErrorOr<void> Formatter<Error>::format(FormatBuilder& builder, Error const& error)
+{
+    switch (error.kind()) {
+    case Error::Kind::Syscall:
+        return Formatter<FormatString>::format(builder, "{}: {} (errno={})"sv, error.string_literal(), strerror(error.code()), error.code());
+    case Error::Kind::Errno:
+        return Formatter<FormatString>::format(builder, "{} (errno={})"sv, strerror(error.code()), error.code());
+    case Error::Kind::Windows:
+        return windows_error_helper(*this, builder, error);
+    case Error::Kind::StringLiteral:
+        return Formatter<FormatString>::format(builder, "{}"sv, error.string_literal());
+    }
+    VERIFY_NOT_REACHED(); // GCC <= 15.1  doesn't understand that all control flow is handled here.
 }
 
 #ifdef AK_OS_ANDROID
