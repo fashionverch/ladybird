@@ -27,8 +27,8 @@ CharacterData::~CharacterData() = default;
 
 void CharacterData::initialize(JS::Realm& realm)
 {
-    Base::initialize(realm);
     WEB_SET_PROTOTYPE_FOR_INTERFACE(CharacterData);
+    Base::initialize(realm);
 }
 
 // https://dom.spec.whatwg.org/#dom-characterdata-data
@@ -147,7 +147,7 @@ WebIDL::ExceptionOr<void> CharacterData::replace_data(size_t offset, size_t coun
         static_cast<Layout::TextNode&>(*layout_node).invalidate_text_for_rendering();
 
         // We also need to relayout.
-        set_needs_layout_update(SetNeedsLayoutReason::CharacterDataReplaceData);
+        layout_node->set_needs_layout_update(SetNeedsLayoutReason::CharacterDataReplaceData);
     }
 
     document().bump_character_data_version();
