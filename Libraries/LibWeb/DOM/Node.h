@@ -209,6 +209,10 @@ public:
     virtual bool is_html_iframe_element() const { return false; }
     virtual bool is_html_frameset_element() const { return false; }
     virtual bool is_html_fieldset_element() const { return false; }
+    virtual bool is_html_li_element() const { return false; }
+    virtual bool is_html_menu_element() const { return false; }
+    virtual bool is_html_olist_element() const { return false; }
+    virtual bool is_html_ulist_element() const { return false; }
     virtual bool is_navigable_container() const { return false; }
     virtual bool is_lazy_loading() const { return false; }
 
