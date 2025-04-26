@@ -28,7 +28,7 @@ public:
         MUST(set_attribute(AttributeNames::start, String::number(start)));
     }
 
-    size_t starting_value() const;
+    WebIDL::Long starting_value() const;
 
     virtual bool is_html_olist_element() const override { return true; }
 
