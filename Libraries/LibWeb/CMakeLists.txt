@@ -307,6 +307,10 @@ set(SOURCES
     FileAPI/FileList.cpp
     FileAPI/FileReader.cpp
     FileAPI/FileReaderSync.cpp
+    Geolocation/Geolocation.cpp
+    Geolocation/GeolocationCoordinates.cpp
+    Geolocation/GeolocationPosition.cpp
+    Geolocation/GeolocationPositionError.cpp
     Geometry/DOMMatrix.cpp
     Geometry/DOMMatrixReadOnly.cpp
     Geometry/DOMPoint.cpp

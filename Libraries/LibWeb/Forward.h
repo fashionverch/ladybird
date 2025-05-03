@@ -405,6 +405,15 @@ class File;
 class FileList;
 }
 
+namespace Web::Geolocation {
+class Geolocation;
+class GeolocationCoordinates;
+class GeolocationPosition;
+class GeolocationPositionError;
+
+struct PositionOptions;
+}
+
 namespace Web::Geometry {
 class DOMMatrix;
 class DOMMatrixReadOnly;
