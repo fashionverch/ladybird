@@ -12,6 +12,8 @@
 #include <LibJS/Runtime/Array.h>
 #include <LibJS/Runtime/ArrayBuffer.h>
 #include <LibJS/Runtime/BigInt.h>
+#include <LibJS/Runtime/ErrorConstructor.h>
+#include <LibJS/Runtime/Intrinsics.h>
 #include <LibJS/Runtime/Iterator.h>
 #include <LibJS/Runtime/NativeFunction.h>
 #include <LibJS/Runtime/Object.h>
@@ -70,6 +72,35 @@ void finalize(JS::Object& object)
 {
     auto& global_object = HTML::relevant_global_object(object);
     Detail::s_caches.remove(global_object);
+}
+
+// https://webassembly.github.io/spec/js-api/#error-objects
+void initialize(JS::Object& self, JS::Realm& realm)
+{
+    // 1. Let namespaceObject be the namespace object.
+    auto& namespace_object = self;
+
+    // 2. For each error of « "CompileError", "LinkError", "RuntimeError" »,
+    // 2.1. Let constructor be a new object, implementing the NativeError Object Structure, with NativeError set to error.
+    // 2.2. ! DefineMethodProperty(namespaceObject, error, constructor, false).
+
+    // 2..2.2 for error=CompileError:
+    auto descriptor = JS::PropertyDescriptor {
+        .writable = true,
+        .enumerable = false,
+        .configurable = true,
+    };
+
+    descriptor.value = realm.create<CompileErrorConstructor>(realm);
+    MUST(namespace_object.define_property_or_throw("CompileError"_string, descriptor));
+
+    // 2..2.2 for error=LinkError:
+    descriptor.value = realm.create<LinkErrorConstructor>(realm);
+    MUST(namespace_object.define_property_or_throw("LinkError"_string, descriptor));
+
+    // 2..2.2 for error=RuntimeError:
+    descriptor.value = realm.create<RuntimeErrorConstructor>(realm);
+    MUST(namespace_object.define_property_or_throw("RuntimeError"_string, descriptor));
 }
 
 // https://webassembly.github.io/spec/js-api/#dom-webassembly-validate
@@ -851,4 +882,126 @@ GC::Ref<WebIDL::Promise> compile_potential_webassembly_response(JS::VM& vm, GC::
     return return_value;
 }
 
+#define DEFINE_HACKY_NATIVE_ERROR(ClassName, snake_name, PrototypeName, ConstructorName)                       \
+    GC_DEFINE_ALLOCATOR(ClassName);                                                                            \
+    GC::Ref<ClassName> ClassName::create(JS::Realm& realm)                                                     \
+    {                                                                                                          \
+        return realm.create<ClassName>(PrototypeName::hacky_the(realm));                                       \
+    }                                                                                                          \
+                                                                                                               \
+    GC::Ref<ClassName> ClassName::create(JS::Realm& realm, String message)                                     \
+    {                                                                                                          \
+        auto& vm = realm.vm();                                                                                 \
+        auto error = ClassName::create(realm);                                                                 \
+        u8 const attr = JS::Attribute::Writable | JS::Attribute::Configurable;                                 \
+        error->define_direct_property(vm.names.message, JS::PrimitiveString::create(vm, move(message)), attr); \
+        return error;                                                                                          \
+    }                                                                                                          \
+                                                                                                               \
+    GC::Ref<ClassName> ClassName::create(JS::Realm& realm, StringView message)                                 \
+    {                                                                                                          \
+        return create(realm, MUST(String::from_utf8(message)));                                                \
+    }                                                                                                          \
+                                                                                                               \
+    ClassName::ClassName(JS::Object& prototype)                                                                \
+        : Error(prototype)                                                                                     \
+    {                                                                                                          \
+    }
+
+DEFINE_HACKY_NATIVE_ERROR(CompileError, compile_error, CompileErrorPrototype, CompileErrorConstructor)
+DEFINE_HACKY_NATIVE_ERROR(LinkError, link_error, LinkErrorPrototype, LinkErrorConstructor)
+DEFINE_HACKY_NATIVE_ERROR(RuntimeError, runtime_error, RuntimeErrorPrototype, RuntimeErrorConstructor)
+
+#undef DEFINE_HACKY_NATIVE_ERROR
+
+#define DEFINE_HACKY_NATIVE_ERROR_CONSTRUCTOR(ClassName, snake_name, PrototypeName, ConstructorName)                           \
+    GC_DEFINE_ALLOCATOR(ConstructorName);                                                                                      \
+    ConstructorName::ConstructorName(JS::Realm& realm)                                                                         \
+        : NativeFunction(#ClassName##_string, *realm.intrinsics().error_constructor())                                         \
+    {                                                                                                                          \
+    }                                                                                                                          \
+                                                                                                                               \
+    void ConstructorName::initialize(JS::Realm& realm)                                                                         \
+    {                                                                                                                          \
+        auto& vm = this->vm();                                                                                                 \
+        Base::initialize(realm);                                                                                               \
+                                                                                                                               \
+        /* 20.5.6.2.1 NativeError.prototype, https://tc39.es/ecma262/#sec-nativeerror.prototype */                             \
+        define_direct_property(vm.names.prototype, &PrototypeName::hacky_the(realm), 0);                                       \
+                                                                                                                               \
+        define_direct_property(vm.names.length, JS::Value(1), JS::Attribute::Configurable);                                    \
+    }                                                                                                                          \
+                                                                                                                               \
+    ConstructorName::~ConstructorName() = default;                                                                             \
+                                                                                                                               \
+    /* 20.5.6.1.1 NativeError ( message [ , options ] ), https://tc39.es/ecma262/#sec-nativeerror */                           \
+    JS::ThrowCompletionOr<JS::Value> ConstructorName::call()                                                                   \
+    {                                                                                                                          \
+        /* 1. If NewTarget is undefined, let newTarget be the active function object; else let newTarget be NewTarget. */      \
+        return TRY(construct(*this));                                                                                          \
+    }                                                                                                                          \
+                                                                                                                               \
+    /* 20.5.6.1.1 NativeError ( message [ , options ] ), https://tc39.es/ecma262/#sec-nativeerror */                           \
+    JS::ThrowCompletionOr<GC::Ref<JS::Object>> ConstructorName::construct(JS::FunctionObject& new_target)                      \
+    {                                                                                                                          \
+        auto& vm = this->vm();                                                                                                 \
+                                                                                                                               \
+        auto message = vm.argument(0);                                                                                         \
+        auto options = vm.argument(1);                                                                                         \
+                                                                                                                               \
+        /* 2. Let O be ? OrdinaryCreateFromConstructor(newTarget, "%NativeError.prototype%", « [[ErrorData]] »). */            \
+        auto error = TRY(ordinary_create_from_constructor<ClassName>(vm, new_target, &JS::Intrinsics::error_prototype));       \
+                                                                                                                               \
+        /* 3. If message is not undefined, then */                                                                             \
+        if (!message.is_undefined()) {                                                                                         \
+            /* a. Let msg be ? ToString(message). */                                                                           \
+            auto msg = TRY(message.to_string(vm));                                                                             \
+                                                                                                                               \
+            /* b. Perform CreateNonEnumerableDataPropertyOrThrow(O, "message", msg). */                                        \
+            error->create_non_enumerable_data_property_or_throw(vm.names.message, JS::PrimitiveString::create(vm, move(msg))); \
+        }                                                                                                                      \
+                                                                                                                               \
+        /* 4. Perform ? InstallErrorCause(O, options). */                                                                      \
+        TRY(error->install_error_cause(options));                                                                              \
+                                                                                                                               \
+        /* 5. Return O. */                                                                                                     \
+        return error;                                                                                                          \
+    }
+
+DEFINE_HACKY_NATIVE_ERROR_CONSTRUCTOR(CompileError, compile_error, CompileErrorPrototype, CompileErrorConstructor)
+DEFINE_HACKY_NATIVE_ERROR_CONSTRUCTOR(LinkError, link_error, LinkErrorPrototype, LinkErrorConstructor)
+DEFINE_HACKY_NATIVE_ERROR_CONSTRUCTOR(RuntimeError, runtime_error, RuntimeErrorPrototype, RuntimeErrorConstructor)
+
+#undef DEFINE_HACKY_NATIVE_ERROR_CONSTRUCTOR
+
+#define DEFINE_HACKY_NATIVE_ERROR_PROTOTYPE(ClassName, snake_name, PrototypeName, ConstructorName)         \
+    GC_DEFINE_ALLOCATOR(PrototypeName);                                                                    \
+                                                                                                           \
+    PrototypeName::PrototypeName(JS::Realm& realm)                                                         \
+        : PrototypeObject(realm.intrinsics().error_prototype())                                            \
+    {                                                                                                      \
+    }                                                                                                      \
+                                                                                                           \
+    GC::Ptr<PrototypeName> g_##snake_name##_prototype_instance { nullptr };                                \
+    PrototypeName& PrototypeName::hacky_the(JS::Realm& realm)                                              \
+    {                                                                                                      \
+        if (!g_##snake_name##_prototype_instance)                                                          \
+            g_##snake_name##_prototype_instance = realm.create<PrototypeName>(realm);                      \
+        return *g_##snake_name##_prototype_instance;                                                       \
+    }                                                                                                      \
+                                                                                                           \
+    void PrototypeName::initialize(JS::Realm& realm)                                                       \
+    {                                                                                                      \
+        auto& vm = this->vm();                                                                             \
+        Base::initialize(realm);                                                                           \
+        u8 const attr = JS::Attribute::Writable | JS::Attribute::Configurable;                             \
+        define_direct_property(vm.names.name, JS::PrimitiveString::create(vm, #ClassName##_string), attr); \
+        define_direct_property(vm.names.message, JS::PrimitiveString::create(vm, String {}), attr);        \
+    }
+
+DEFINE_HACKY_NATIVE_ERROR_PROTOTYPE(CompileError, compile_error, CompileErrorPrototype, CompileErrorConstructor)
+DEFINE_HACKY_NATIVE_ERROR_PROTOTYPE(LinkError, link_error, LinkErrorPrototype, LinkErrorConstructor)
+DEFINE_HACKY_NATIVE_ERROR_PROTOTYPE(RuntimeError, runtime_error, RuntimeErrorPrototype, RuntimeErrorConstructor)
+
+#undef DEFINE_HACKY_NATIVE_ERROR_PROTOTYPE
 }
