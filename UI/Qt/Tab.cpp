@@ -25,6 +25,7 @@
 #include <QCursor>
 #include <QDesktopServices>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFont>
 #include <QFontMetrics>
 #include <QGuiApplication>
@@ -767,6 +768,26 @@ Tab::Tab(BrowserWindow* window, RefPtr<WebView::WebContentClient> parent_client,
             m_video_context_menu->exec(screen_position);
         else
             m_audio_context_menu->exec(screen_position);
+    };
+
+    view().on_request_download = [this](String const& filename, ByteBuffer const& bytes) {
+        QString downloadPath = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+        if (downloadPath.isEmpty()) {
+            downloadPath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+        }
+
+        QDir dir(downloadPath);
+        if (!dir.exists()) {
+            VERIFY(dir.mkpath("."));
+        }
+
+        QString safe_file_name = QFileInfo(qstring_from_ak_string(filename)).fileName();
+        QString filePath = dir.filePath();
+        QFile file(filePath);
+        VERIFY(!file.open(QIODevice::WriteOnly));
+
+        file.write(qbytearray_from_ak_byte_buffer(bytes));
+        file.close();
     };
 }
 
