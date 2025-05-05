@@ -62,7 +62,7 @@ WebIDL::ExceptionOr<void> IDBIndex::set_name(String const& value)
 
     // 5. If transaction’s state is not active, then throw a "TransactionInactiveError" DOMException.
     if (transaction->state() != IDBTransaction::TransactionState::Active)
-        return WebIDL::TransactionInactiveError::create(realm, "Transaction is not active"_string);
+        return WebIDL::TransactionInactiveError::create(realm, "Transaction is not active while updating index name"_string);
 
     // FIXME: 6. If index or index’s object store has been deleted, throw an "InvalidStateError" DOMException.
 
@@ -99,6 +99,21 @@ JS::Value IDBIndex::key_path() const
                 return JS::PrimitiveString::create(realm().vm(), entry);
             });
         });
+}
+
+// https://w3c.github.io/IndexedDB/#index-referenced-value
+HTML::SerializationRecord IDBIndex::get_referenced_value(IndexRecord const& index_record) const
+{
+    // Records in an index are said to have a referenced value.
+    // This is the value of the record in the index’s referenced object store which has a key equal to the index’s record’s value.
+    return m_index
+        ->object_store()
+        ->records()
+        .first_matching([&](auto const& store_record) {
+            return Key::equals(store_record.key, index_record.value);
+        })
+        .value()
+        .value;
 }
 
 }
