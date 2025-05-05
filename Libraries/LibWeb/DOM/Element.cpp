@@ -1,12 +1,14 @@
 /*
  * Copyright (c) 2018-2024, Andreas Kling <andreas@ladybird.org>
- * Copyright (c) 2022-2023, San Atkins <atkinssj@serenityos.org>
+ * Copyright (c) 2022-2023, Sam Atkins <atkinssj@serenityos.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
 #include <AK/AnyOf.h>
+#include <AK/Assertions.h>
 #include <AK/Debug.h>
+#include <AK/NumericLimits.h>
 #include <AK/StringBuilder.h>
 #include <LibJS/Runtime/NativeFunction.h>
 #include <LibUnicode/CharacterTypes.h>
@@ -84,6 +86,7 @@
 #include <LibWeb/WebIDL/AbstractOperations.h>
 #include <LibWeb/WebIDL/DOMException.h>
 #include <LibWeb/WebIDL/ExceptionOr.h>
+#include <LibWeb/WebIDL/Types.h>
 
 namespace Web::DOM {
 
@@ -3285,7 +3288,7 @@ bool Element::has_paint_containment() const
     return false;
 }
 
-size_t Element::number_of_owned_list_items() const
+WebIDL::Long Element::number_of_owned_list_items() const
 {
     auto number_of_owned_li_elements = 0;
     for_each_child_of_type<DOM::Element>([&](auto& child) {
@@ -3336,61 +3339,63 @@ Element const* Element::list_owner() const
 }
 
 // https://html.spec.whatwg.org/multipage/grouping-content.html#ordinal-value
-size_t Element::ordinal_value() const
+WebIDL::Long Element::ordinal_value()
 {
-    // NOTE: The spec provides an algorithm to determine the ordinal value of each element owned by a given list owner.
-    //       However, we are only interested in the ordinal value of this element.
+    if (m_ordinal_value.has_value())
+        return m_ordinal_value.value();
 
-    // FIXME: 1. Let i be 1.
-
-    // 2. If owner is an ol element, let numbering be owner's starting value. Otherwise, let numbering be 1.
     auto const* owner = list_owner();
     if (!owner) {
         return 1;
     }
 
-    auto numbering = 1;
+    // 1. Let i be 1. [Not necessary]
+    // 2. If owner is an ol element, let numbering be owner's starting value. Otherwise, let numbering be 1.
+    WebIDL::Long numbering = 1;
     auto reversed = false;
     if (is<HTML::HTMLOListElement>(owner)) {
         auto const* ol_element = static_cast<const HTML::HTMLOListElement*>(owner);
         numbering = ol_element->starting_value();
         reversed = ol_element->has_attribute(HTML::AttributeNames::reversed);
+
+        if (reversed)
+            VERIFY(AK::NumericLimits<WebIDL::Long>::min() + ol_element->number_of_owned_list_items() <= numbering);
+        else
+            VERIFY(AK::NumericLimits<WebIDL::Long>::max() - ol_element->number_of_owned_list_items() >= numbering);
     }
 
-    // FIXME: 3. Loop : If i is greater than the number of list items that owner owns, then return; all of owner's owned list items have been assigned ordinal values.
-    // FIXME: 4. Let item be the ith of owner's owned list items, in tree order.
-
+    // 3. Loop : If i is greater than the number of list items that owner owns, then return; all of owner's owned list items have been assigned ordinal values.
+    // NOTE: We use `owner->for_each_child_of_type` to iterate through the owner's list of owned elements.
+    //       As a result, we don't need `i` as counter (spec) in the list of children, with no material consequences.
     owner->for_each_child_of_type<DOM::Element>([&](auto& item) {
-        if (item.list_owner() == owner) {
-            // 5. If item is an li element that has a value attribute, then:
-            auto value_attribute = item.get_attribute(HTML::AttributeNames::value);
-            if (is<HTML::HTMLLIElement>(item) && value_attribute.has_value()) {
-                // 1. Let parsed be the result of parsing the value of the attribute as an integer.
-                auto parsed = HTML::parse_integer(value_attribute.value());
+        // 4. Let item be the ith of owner's owned list items, in tree order. [Not necessary]
+        // 5. If item is an li element that has a value attribute, then:
+        auto value_attribute = item.get_attribute(HTML::AttributeNames::value);
+        if (is<HTML::HTMLLIElement>(item) && value_attribute.has_value()) {
+            // 1. Let parsed be the result of parsing the value of the attribute as an integer.
+            auto parsed = HTML::parse_integer(value_attribute.value());
 
-                // 2. If parsed is not an error, then set numbering to parsed.
-                if (parsed.has_value())
-                    numbering = parsed.value();
-            }
-
-            // FIXME: 6. The ordinal value of item is numbering.
-            if (&item == this)
-                return IterationDecision::Break;
-
-            // 7. If owner is an ol element, and owner has a reversed attribute, decrement numbering by 1; otherwise, increment numbering by 1.
-            if (reversed) {
-                numbering--;
-            } else {
-                numbering++;
-            }
-
-            // FIXME: 8. Increment i by 1.
+            // 2. If parsed is not an error, then set numbering to parsed.
+            if (parsed.has_value())
+                numbering = parsed.value();
         }
+
+        // 6. The ordinal value of item is numbering.
+        item.m_ordinal_value = numbering;
+
+        // 7. If owner is an ol element, and owner has a reversed attribute, decrement numbering by 1; otherwise, increment numbering by 1.
+        if (reversed) {
+            numbering--;
+        } else {
+            numbering++;
+        }
+
+        // 8. Increment i by 1. [Not necessary]
+        // 9. Go to the step labeled loop.
         return IterationDecision::Continue;
     });
 
-    // FIXME: 9. Go to the step labeled loop.
-    return numbering;
+    return this->m_ordinal_value.value_or(1);
 }
 
 bool Element::id_reference_exists(String const& id_reference) const

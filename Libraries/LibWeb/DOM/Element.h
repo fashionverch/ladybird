@@ -31,6 +31,7 @@
 #include <LibWeb/IntersectionObserver/IntersectionObserver.h>
 #include <LibWeb/WebIDL/ExceptionOr.h>
 #include <LibWeb/WebIDL/Types.h>
+#include <cstdint>
 
 namespace Web::DOM {
 
@@ -467,9 +468,10 @@ public:
         return affected_by_direct_sibling_combinator() || affected_by_indirect_sibling_combinator() || affected_by_first_or_last_child_pseudo_class() || affected_by_nth_child_pseudo_class();
     }
 
-    size_t number_of_owned_list_items() const;
+    WebIDL::Long number_of_owned_list_items() const;
     Element const* list_owner() const;
-    size_t ordinal_value() const;
+    ALWAYS_INLINE void invalidate_ordinal() { m_ordinal_value = {}; }
+    WebIDL::Long ordinal_value();
 
     void set_pointer_capture(WebIDL::Long pointer_id);
     void release_pointer_capture(WebIDL::Long pointer_id);
@@ -583,6 +585,9 @@ private:
 
     // https://drafts.csswg.org/css-contain/#proximity-to-the-viewport
     ProximityToTheViewport m_proximity_to_the_viewport { ProximityToTheViewport::NotDetermined };
+
+    // https://html.spec.whatwg.org/multipage/grouping-content.html#ordinal-value
+    Optional<WebIDL::Long> m_ordinal_value;
 };
 
 template<>

@@ -913,6 +913,18 @@ void Node::remove(bool suppress_observers)
     // 6. Let oldNextSibling be node’s next sibling.
     GC::Ptr<Node> old_next_sibling = next_sibling();
 
+    // Ad-hoc: invalidate ordinal value for the next element sibling of a LI element.
+    //         m_ordinal_value for each sibling will be recalculated on the first call to ordinal_value for this [next sibling] element.
+    // NOTE: When adding children with append_child or insert_child, ordinal values for previous siblings stay the same.
+    //       The calculation of ordinal of the child with invalid ordinal and its next siblings will happen on the first call
+    //       to ordinal_value for the child with invalid ordinal.
+    //       This works since ordinal values are accessed (for layout and paint) in the order of <li> nodes !!
+    if (is_html_li_element()) {
+        Element* next_element_sibling = next_sibling_of_type<DOM::Element>();
+        if (next_element_sibling != nullptr)
+            next_element_sibling->invalidate_ordinal();
+    }
+
     if (is_connected()) {
         // Since the tree structure is about to change, we need to invalidate both style and layout.
         // In the future, we should find a way to only invalidate the parts that actually need it.
