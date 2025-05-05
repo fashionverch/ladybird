@@ -646,7 +646,11 @@ BrowserWindow::BrowserWindow(Vector<URL::URL> const& initial_urls, IsPopupWindow
 
     m_go_back_action->setShortcuts(QKeySequence::keyBindings(QKeySequence::StandardKey::Back));
     m_go_forward_action->setShortcuts(QKeySequence::keyBindings(QKeySequence::StandardKey::Forward));
-    m_reload_action->setShortcuts(QKeySequence::keyBindings(QKeySequence::StandardKey::Refresh));
+
+    auto reload_shortcuts = QKeySequence::keyBindings(QKeySequence::StandardKey::Refresh);
+    reload_shortcuts.append(QKeySequence(Qt::CTRL | Qt::Key_R));
+    m_reload_action->setShortcuts(reload_shortcuts);
+
     m_go_back_action->setEnabled(false);
     m_go_forward_action->setEnabled(false);
     m_reload_action->setEnabled(true);
